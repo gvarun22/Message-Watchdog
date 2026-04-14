@@ -97,7 +97,9 @@ alert_channels:
     enabled: true
 
   email:
-    enabled: false    # enable once Gmail credentials are in Key Vault
+    enabled: true
+    sender: "gvarun22@gmail.com"
+    recipient: "gvarun22@gmail.com"
 
 # ---------------------------------------------------------------------------
 # Source settings
