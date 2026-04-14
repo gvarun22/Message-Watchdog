@@ -1,0 +1,20 @@
+# Message Watchdog dependencies
+# Install with: pip install -r requirements.txt
+
+# Telegram MTProto client (user account, not bot API)
+telethon==1.36.0
+
+# LLM providers (install both — only the configured one is imported at runtime)
+anthropic>=0.40.0
+openai>=1.30.0           # used by azure_openai provider
+
+# Configuration and utilities
+PyYAML==6.0.2
+python-dotenv==1.0.1
+
+# Azure Key Vault secret loading (managed identity in Azure, az login locally)
+azure-identity>=1.15.0
+azure-keyvault-secrets>=4.8.0
+
+# Phone call alerts
+twilio>=9.0.0

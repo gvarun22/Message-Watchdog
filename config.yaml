@@ -1,0 +1,123 @@
+# =============================================================================
+# Message Watchdog — Configuration
+# =============================================================================
+# This file defines what to watch and how to alert.
+# No code changes are needed to add, remove, or modify watchdogs.
+# Credentials belong in .env (never in this file).
+# =============================================================================
+
+# ---------------------------------------------------------------------------
+# LLM Provider
+# Switch between Anthropic Claude and Azure OpenAI by changing `provider`.
+# ---------------------------------------------------------------------------
+llm:
+  provider: azure_openai
+
+  # --- Azure OpenAI settings ---
+  azure_deployment: "gpt-4.1-mini"
+  azure_api_version: "2025-01-01-preview"
+
+  # --- Anthropic settings (unused while provider: azure_openai) ---
+  # primary_model: "claude-haiku-4-5-20251001"
+  # escalation_model: "claude-sonnet-4-6"
+
+# ---------------------------------------------------------------------------
+# Watchdog definitions
+# Multiple watchdogs can target the same group — only one Telegram connection
+# is created per unique group, shared across all watchdogs targeting it.
+# ---------------------------------------------------------------------------
+watchdogs:
+
+  - name: "H1B Slot Opening India"
+    source_type: telegram
+    source_group: "https://t.me/us_visa_stamping_india"
+
+    # Natural-language condition — the LLM evaluates message batches against this.
+    # Be descriptive. Mention alternate spellings, abbreviations, and context clues.
+    condition: >
+      Alert me when H1B visa stamping slots appear to be opening at US consulates in India.
+      Signs to watch for: people saying slots are visible, available, or open; mentions of
+      bulk slots dropping; mentions of specific cities like Mumbai, Chennai, Hyderabad,
+      Delhi / New Delhi, or Kolkata; screenshots being posted (sudden burst of photo messages);
+      people saying they booked an appointment; sudden increase in group activity or excitement.
+      The group uses abbreviations like "h1b stmpng", "h1-b", or "h 1b". People misspell
+      and use terrible grammar — be robust to this.
+
+    confidence_threshold: 0.72   # lower = more sensitive; raise if false positives are a problem
+    alert_channels:
+      - phone_call      # PRIMARY: rings through silent mode
+      - telegram_self   # instant push notification
+      - email           # backup
+    cooldown_seconds: 300
+    batch_window_seconds: 60
+    batch_burst_cap: 30
+
+    # Surge gate — LLM trip switch.
+    # Blocks LLM calls during quiet periods. Saves ~95% of token costs.
+    # The LLM only runs when at least one condition below is met:
+    surge_gate:
+      enabled: true
+      min_spike_factor: 2.5          # message rate ≥ 2.5× baseline
+      always_classify_rate: 3.0      # always classify if rate ≥ 3 msg/min regardless
+      keyword_patterns:
+        - 'h\s*[-]?\s*1\s*b'         # h1b, h-1b, h 1 b, etc.
+        - 'slot'
+        - 'appointment'
+        - 'stamp'
+        - 'consulate'
+        - 'hyderabad|chennai|mumbai|delhi|kolkata'
+
+  # Add more watchdogs here — same group, no extra connection created:
+  #
+  # - name: "H4 Slots Opening"
+  #   source_type: telegram
+  #   source_group: "https://t.me/us_visa_stamping_india"
+  #   condition: >
+  #     Alert me when H4 dependent visa slots become available at any US
+  #     consulate in India.
+  #   confidence_threshold: 0.75
+  #   alert_channels: [telegram_self, email]
+  #   cooldown_seconds: 600
+  #   batch_window_seconds: 60
+  #   batch_burst_cap: 30
+  #   surge_gate:
+  #     enabled: true
+  #     min_spike_factor: 2.5
+  #     always_classify_rate: 3.0
+  #     keyword_patterns: ['h\s*4', 'dependent\s+visa']
+
+# ---------------------------------------------------------------------------
+# Alert channel configuration
+# ---------------------------------------------------------------------------
+alert_channels:
+  phone_call:
+    enabled: true
+
+  telegram_self:
+    enabled: true
+
+  email:
+    enabled: false    # enable once Gmail credentials are in Key Vault
+
+# ---------------------------------------------------------------------------
+# Source settings
+# ---------------------------------------------------------------------------
+sources:
+  telegram:
+    # Local development    : session_name: "watchdog_session"
+    # Azure ACI deployment : session_name: "/session-store/watchdog_session"
+    #   The /session-store path is the Azure File Share mount point (see deploy.yml).
+    #   The .session file persists there across container restarts.
+    session_name: "/session-store/watchdog_session"
+
+    # On startup, fetch and classify this many minutes of recent group history.
+    # Covers the brief gap during a deploy restart or container crash.
+    # Set to 0 to disable catch-up entirely.
+    startup_lookback_minutes: 30
+
+# ---------------------------------------------------------------------------
+# Global settings
+# ---------------------------------------------------------------------------
+log_dir: "logs"
+log_level: "INFO"
+dry_run: false       # set true or use --dry-run CLI flag for testing

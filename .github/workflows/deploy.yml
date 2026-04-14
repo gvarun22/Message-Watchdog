@@ -1,0 +1,122 @@
+# =============================================================================
+# Message Watchdog — CI/CD: Deploy to Azure Container Instances
+# =============================================================================
+#
+# Triggered on every push to main.
+#
+# What it does:
+#   1. Logs in to Azure with the GitHub Actions service principal
+#   2. Logs in to ACR using Azure credentials (no stored registry password)
+#   3. Builds and pushes the Docker image to ACR
+#   4. Reads the Azure File Share storage key from Key Vault (no stored key)
+#   5. Deletes the existing ACI container (if any)
+#   6. Re-creates it with the new image, the managed identity, and only
+#      AZURE_KEY_VAULT_URL as an env var — the container reads all app
+#      secrets from Key Vault at runtime via managed identity
+#
+# Required GitHub Secrets (Settings → Secrets and variables → Actions):
+# -----------------------------------------------------------------------
+#   AZURE_CREDENTIALS        JSON from: az ad sp create-for-rbac --sdk-auth
+#                            (set by scripts/azure-setup.sh)
+#   ACR_REGISTRY             e.g. messagewatchdog.azurecr.io
+#   RESOURCE_GROUP           Azure resource group name
+#   KEY_VAULT_URL            e.g. https://watchdog-kv.vault.azure.net/
+#   STORAGE_ACCOUNT_NAME     Azure storage account name
+#   FILE_SHARE_NAME          Azure file share name (e.g. watchdog-session)
+#   ACI_MANAGED_IDENTITY_ID  Full resource ID of the user-assigned identity
+#
+# NO application credentials (Telegram, Anthropic, Twilio, Gmail) are stored
+# in GitHub — they live exclusively in Key Vault and are accessed at runtime.
+#
+# One-time setup: run scripts/azure-setup.sh before the first deploy.
+# =============================================================================
+
+name: Deploy to Azure
+
+on:
+  push:
+    branches: [main]
+
+env:
+  IMAGE_NAME: message-watchdog
+  ACI_NAME: message-watchdog
+  LOCATION: westus3
+
+jobs:
+  deploy:
+    name: Build and Deploy
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Login to Azure
+        uses: azure/login@v2
+        with:
+          creds: ${{ secrets.AZURE_CREDENTIALS }}
+
+      # Use Azure credentials to authenticate to ACR — no stored registry password.
+      - name: Login to Azure Container Registry
+        run: az acr login --name ${{ secrets.ACR_REGISTRY }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: |
+            ${{ secrets.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:latest
+            ${{ secrets.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+      # Read the file share storage key from Key Vault — not stored in GitHub.
+      # The GitHub Actions SP has Key Vault Secrets User role on this vault.
+      - name: Read storage key from Key Vault
+        id: storage
+        run: |
+          KEY=$(az keyvault secret show \
+            --vault-name "$(echo '${{ secrets.KEY_VAULT_URL }}' | sed 's|https://||; s|.vault.azure.net/||')" \
+            --name storage-account-key \
+            --query value -o tsv)
+          echo "::add-mask::$KEY"
+          echo "key=$KEY" >> "$GITHUB_OUTPUT"
+
+      - name: Delete existing container (if any)
+        run: |
+          az container delete \
+            --name ${{ env.ACI_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --yes \
+          || true
+
+      # The container receives only AZURE_KEY_VAULT_URL.
+      # All app secrets are fetched from Key Vault at startup via managed identity.
+      # The managed identity has AcrPull (for image pull) and Key Vault Secrets User.
+      - name: Deploy to Azure Container Instances
+        run: |
+          az container create \
+            --name ${{ env.ACI_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --image ${{ secrets.ACR_REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }} \
+            --assign-identity ${{ secrets.ACI_MANAGED_IDENTITY_ID }} \
+            --acr-identity ${{ secrets.ACI_MANAGED_IDENTITY_ID }} \
+            --registry-login-server ${{ secrets.ACR_REGISTRY }} \
+            --location ${{ env.LOCATION }} \
+            --os-type Linux \
+            --cpu 0.5 \
+            --memory 0.5 \
+            --restart-policy Always \
+            --environment-variables \
+              AZURE_KEY_VAULT_URL=${{ secrets.KEY_VAULT_URL }} \
+            --azure-file-volume-account-name ${{ secrets.STORAGE_ACCOUNT_NAME }} \
+            --azure-file-volume-account-key "${{ steps.storage.outputs.key }}" \
+            --azure-file-volume-share-name ${{ secrets.FILE_SHARE_NAME }} \
+            --azure-file-volume-mount-path /session-store
+
+      - name: Show container status
+        run: |
+          az container show \
+            --name ${{ env.ACI_NAME }} \
+            --resource-group ${{ secrets.RESOURCE_GROUP }} \
+            --query "{status:instanceView.state, image:containers[0].image}" \
+            --output table
