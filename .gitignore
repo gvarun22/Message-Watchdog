@@ -30,3 +30,7 @@ build/
 
 # Azure / Docker
 .azure/
+
+# Claude Code — local instructions only, not for the repo
+CLAUDE.md
+.claude/

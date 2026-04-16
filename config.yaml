@@ -35,15 +35,33 @@ watchdogs:
     # Natural-language condition — the LLM evaluates message batches against this.
     # Be descriptive. Mention alternate spellings, abbreviations, and context clues.
     condition: >
-      Alert me when H1B visa stamping slots appear to be opening at US consulates in India.
-      Signs to watch for: people saying slots are visible, available, or open; mentions of
-      bulk slots dropping; mentions of specific cities like Mumbai, Chennai, Hyderabad,
-      Delhi / New Delhi, or Kolkata; screenshots being posted (sudden burst of photo messages);
-      people saying they booked an appointment; sudden increase in group activity or excitement.
-      The group uses abbreviations like "h1b stmpng", "h1-b", or "h 1b". People misspell
-      and use terrible grammar — be robust to this.
+      Alert me when H1B visa stamping slots are actively opening RIGHT NOW at US consulates
+      in India. Signs to watch for: people saying slots are currently visible, available, or
+      open; bulk slots dropping; mentions of specific cities (Mumbai, Chennai, Hyderabad,
+      Delhi/New Delhi, Kolkata) combined with current slot availability; screenshots being
+      posted (burst of photo messages); people saying they just booked an appointment; sudden
+      group excitement.
 
-    confidence_threshold: 0.72   # lower = more sensitive; raise if false positives are a problem
+      NEGATIVE signals — lower your confidence significantly if these are present:
+      - "N/A" after a visa category and city means NOT AVAILABLE (e.g. "H1B N/A Hyd/Chn"
+        = H1B slots are not available in Hyderabad/Chennai). This is the OPPOSITE of a
+        positive signal.
+      - Past-tense or historical discussion about slots that already opened earlier ("bulk
+        slots last few weeks", "slots opened this morning at 9am", "I booked yesterday") with
+        no evidence of CURRENT availability should lower confidence significantly.
+      - Someone ASKING whether slots are open ("are there slots?", "can someone confirm slots
+        were released?") without multiple clear affirmative responses is not a trigger.
+      - Discussions about B1, B2, F1, L1, or other non-H1B visa categories are NOT relevant.
+      - Technical complaints (login errors, website down, fee payment issues) with no mention
+        of actual slot availability are NOT a trigger.
+
+      The group uses abbreviations like "h1b stmpng", "h1-b", "h 1b". People misspell and
+      use terrible grammar — be robust to this.
+
+    confidence_threshold: 0.72   # gate for any alert to fire; raise if false positives persist
+    channel_thresholds:
+      phone_call: 0.90     # only call for high-confidence active openings
+      telegram_self: 0.80  # Telegram message for moderate-confidence events
     alert_channels:
       - phone_call      # PRIMARY: rings through silent mode
       - telegram_self   # instant push notification
@@ -98,8 +116,8 @@ alert_channels:
 
   email:
     enabled: true
-    sender: "gvarun22@gmail.com"
-    recipient: "gvarun22@gmail.com"
+    # sender and recipient are read from Key Vault secrets gmail-sender / gmail-recipient
+    # (or GMAIL_SENDER / GMAIL_RECIPIENT env vars for local development)
 
 # ---------------------------------------------------------------------------
 # Source settings

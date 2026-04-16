@@ -28,7 +28,7 @@ param(
     [string]$Location        = "eastus",
     [string]$AcrName         = "messagewatchdog",    # globally unique, alphanumeric only
     [string]$KeyVaultName    = "watchdog-kv",        # globally unique, 3-24 chars
-    [string]$StorageAccount  = "watchdogstorage",    # globally unique, lowercase alphanumeric
+    [string]$StorageAccount  = "",                    # auto-generated from subscription ID if not specified
     [string]$FileShare       = "watchdog-session",
     [string]$IdentityName    = "message-watchdog-id",
     [string]$AciName         = "message-watchdog"
@@ -76,6 +76,12 @@ if ($LASTEXITCODE -ne 0) {
 }
 $currentSub = az account show --query id -o tsv
 Write-Info "Using subscription: $currentSub"
+
+# Auto-generate storage account name from subscription ID if not provided
+if (-not $StorageAccount) {
+    $StorageAccount = "watchdog" + ($SubscriptionId -replace "-","").Substring(0,10)
+    Write-Info "Storage account name auto-generated: '$StorageAccount' (override with -StorageAccount)"
+}
 
 # ---------------------------------------------------------------------------
 # Register required resource providers (idempotent, skipped if already registered)
@@ -150,7 +156,7 @@ az role assignment create `
     --output none
 
 # ---------------------------------------------------------------------------
-# Storage account + file share (Telegram .session persistence)
+# Storage account + file share (source session file persistence)
 # ---------------------------------------------------------------------------
 $storageExists = az storage account show `
     --name $StorageAccount `
@@ -294,9 +300,10 @@ Set-KVSecret "telegram-api-hash" "TELEGRAM_API_HASH (from my.telegram.org/apps)"
 Set-KVSecret "telegram-phone"    "TELEGRAM_PHONE (E.164 format, e.g. +919175551234)" $true
 
 Write-Host ""
-Write-Host "--- Azure OpenAI (required) ---"
-Set-KVSecret "azure-openai-endpoint" "AZURE_OPENAI_ENDPOINT"  $true
-Set-KVSecret "azure-openai-api-key"  "AZURE_OPENAI_API_KEY"   $true
+Write-Host "--- LLM provider (at least one required — match llm.provider in config.yaml) ---"
+Set-KVSecret "anthropic-api-key"     "ANTHROPIC_API_KEY (skip if using Azure OpenAI)"   $false
+Set-KVSecret "azure-openai-endpoint" "AZURE_OPENAI_ENDPOINT (skip if using Anthropic)"  $false
+Set-KVSecret "azure-openai-api-key"  "AZURE_OPENAI_API_KEY (skip if using Anthropic)"   $false
 
 Write-Host ""
 Write-Host "--- Twilio phone call alerts ---"
@@ -307,7 +314,9 @@ Set-KVSecret "twilio-to-number"    "TWILIO_TO_NUMBER (your mobile, e.g. +1917555
 
 Write-Host ""
 Write-Host "--- Gmail alerts (optional) ---"
-Set-KVSecret "gmail-app-password"  "GMAIL_APP_PASSWORD (16-char app password)"  $false
+Set-KVSecret "gmail-app-password"  "GMAIL_APP_PASSWORD (16-char app password from myaccount.google.com/apppasswords)"  $false
+Set-KVSecret "gmail-sender"        "GMAIL_SENDER (Gmail address the app password belongs to)"                           $false
+Set-KVSecret "gmail-recipient"     "GMAIL_RECIPIENT (address to send alerts to, can be the same)"                       $false
 
 # ---------------------------------------------------------------------------
 # Set GitHub repository secrets

@@ -21,7 +21,11 @@ class AlertChannel(ABC):
     and logged. A failure in one channel must never prevent other channels from
     firing (they are dispatched concurrently via asyncio.gather with
     return_exceptions=True, but defensive coding inside send() is still required).
+
+    config_name is set by main.py after construction and matches the key used
+    in WatchdogConfig.channel_thresholds (e.g. "phone_call", "email").
     """
+    config_name: str = ""
 
     @abstractmethod
     async def send(self, message: str, result: ClassificationResult) -> None:

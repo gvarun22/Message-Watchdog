@@ -215,7 +215,19 @@ class WatchdogEngine:
             "[%s] Firing alert #%d (confidence=%.2f)",
             self.config.name, self._alert_count, result.confidence,
         )
+        channels_to_fire = [
+            ch for ch in self._alert_channels
+            if result.confidence >= self.config.channel_thresholds.get(
+                ch.config_name, self.config.confidence_threshold
+            )
+        ]
+        suppressed = len(self._alert_channels) - len(channels_to_fire)
+        if suppressed:
+            logger.info(
+                "[%s] %d channel(s) suppressed by per-channel threshold",
+                self.config.name, suppressed,
+            )
         await asyncio.gather(
-            *[ch.send(alert_text, result) for ch in self._alert_channels],
+            *[ch.send(alert_text, result) for ch in channels_to_fire],
             return_exceptions=True,
         )

@@ -109,3 +109,6 @@ class WatchdogConfig:
     batch_burst_cap: int         # flush immediately when buffer reaches this size (default 30)
     dry_run: bool                # log alert content but do not actually send
     surge_gate: SurgeGateConfig = field(default_factory=SurgeGateConfig)
+    # Per-channel confidence overrides. Any channel not listed uses confidence_threshold.
+    # Example: require 0.90 for phone_call but only 0.72 for email.
+    channel_thresholds: dict[str, float] = field(default_factory=dict)

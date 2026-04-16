@@ -85,18 +85,18 @@ def _build_alert_channels(config: WatchdogConfig, cfg: dict, source_map: dict):
     channel_cfg = cfg.get("alert_channels", {})
 
     for channel_name in config.alert_channels:
+        channel = None
+
         if channel_name == "phone_call":
             if not channel_cfg.get("phone_call", {}).get("enabled", True):
                 continue
             from watchdog.alerts.phone_call import TwilioCallAlert
-            channels.append(
-                TwilioCallAlert(
-                    account_sid=_require_env("TWILIO_ACCOUNT_SID"),
-                    auth_token=_require_env("TWILIO_AUTH_TOKEN"),
-                    from_number=_require_env("TWILIO_FROM_NUMBER"),
-                    to_number=_require_env("TWILIO_TO_NUMBER"),
-                    watchdog_name=config.name,
-                )
+            channel = TwilioCallAlert(
+                account_sid=_require_env("TWILIO_ACCOUNT_SID"),
+                auth_token=_require_env("TWILIO_AUTH_TOKEN"),
+                from_number=_require_env("TWILIO_FROM_NUMBER"),
+                to_number=_require_env("TWILIO_TO_NUMBER"),
+                watchdog_name=config.name,
             )
 
         elif channel_name == "telegram_self":
@@ -111,26 +111,25 @@ def _build_alert_channels(config: WatchdogConfig, cfg: dict, source_map: dict):
                     config.name,
                 )
                 continue
-            channels.append(
-                TelegramSelfAlert(client=source.client, watchdog_name=config.name)
-            )
+            channel = TelegramSelfAlert(client=source.client, watchdog_name=config.name)
 
         elif channel_name == "email":
             if not channel_cfg.get("email", {}).get("enabled", True):
                 continue
             from watchdog.alerts.email_alert import GmailAlert
-            email_cfg = channel_cfg.get("email", {})
-            channels.append(
-                GmailAlert(
-                    gmail_address=email_cfg.get("sender", ""),
-                    app_password=_require_env("GMAIL_APP_PASSWORD"),
-                    to_address=email_cfg.get("recipient", ""),
-                    watchdog_name=config.name,
-                )
+            channel = GmailAlert(
+                gmail_address=_require_env("GMAIL_SENDER"),
+                app_password=_require_env("GMAIL_APP_PASSWORD"),
+                to_address=_require_env("GMAIL_RECIPIENT"),
+                watchdog_name=config.name,
             )
 
         else:
             logging.warning("Unknown alert channel '%s' — skipping", channel_name)
+
+        if channel is not None:
+            channel.config_name = channel_name
+            channels.append(channel)
 
     return channels
 
@@ -164,6 +163,10 @@ def _load_watchdog_configs(cfg: dict, global_dry_run: bool) -> list[WatchdogConf
                 batch_burst_cap=int(entry.get("batch_burst_cap", 30)),
                 dry_run=global_dry_run or bool(cfg.get("dry_run", False)),
                 surge_gate=surge_gate,
+                channel_thresholds={
+                    k: float(v)
+                    for k, v in entry.get("channel_thresholds", {}).items()
+                },
             )
         )
     if not configs:
@@ -276,10 +279,18 @@ def main() -> None:
 
     load_dotenv()
 
-    # Pull secrets from Azure Key Vault when AZURE_KEY_VAULT_URL is set.
-    # No-op in local dev (AZURE_KEY_VAULT_URL absent, .env already loaded above).
-    from watchdog.core.secrets import load_secrets_from_key_vault
-    load_secrets_from_key_vault()
+    # Select the secrets provider based on environment.
+    # Azure Key Vault is used in production (AZURE_KEY_VAULT_URL set by deploy.yml).
+    # EnvSecretsProvider is the no-op fallback for local .env usage.
+    from watchdog.platform.base import load_secrets
+    vault_url = os.getenv("AZURE_KEY_VAULT_URL")
+    if vault_url:
+        from watchdog.platform.azure_keyvault import AzureKeyVaultProvider
+        secrets_provider = AzureKeyVaultProvider(vault_url)
+    else:
+        from watchdog.platform.env import EnvSecretsProvider
+        secrets_provider = EnvSecretsProvider()
+    load_secrets(secrets_provider)
 
     if args.setup:
         from setup import run_setup

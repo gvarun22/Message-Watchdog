@@ -36,6 +36,10 @@ name: Deploy to Azure
 on:
   push:
     branches: [main]
+    paths-ignore:
+      - "**.md"
+      - "scripts/**"
+      - ".claude/**"
 
 env:
   IMAGE_NAME: message-watchdog
