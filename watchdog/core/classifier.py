@@ -79,6 +79,15 @@ def _format_messages_block(messages: list[Message]) -> str:
     return "\n".join(m.format_for_log(indent="") for m in messages)
 
 
+def _repair_json(text: str) -> str:
+    """
+    Fix the one JSON quirk LLMs emit: backslash-escaped quotes used as string
+    delimiters — e.g. \"snippet\" instead of "snippet" in key_signals arrays.
+    Only applied when the initial parse fails.
+    """
+    return text.replace('\\"', '"')
+
+
 def _parse_response(raw_text: str, model: str, tokens: int, latency_ms: int) -> ClassificationResult:
     """Parse the LLM JSON response into a ClassificationResult."""
     text = raw_text.strip()
@@ -90,8 +99,17 @@ def _parse_response(raw_text: str, model: str, tokens: int, latency_ms: int) -> 
             text = text[4:]
         text = text.strip()
 
+    data: dict | None = None
     try:
         data = json.loads(text)
+    except (json.JSONDecodeError, ValueError):
+        try:
+            data = json.loads(_repair_json(text))
+            logger.debug("JSON parsed after repair (escaped-quote fix applied)")
+        except (json.JSONDecodeError, ValueError) as exc:
+            logger.error("Failed to parse LLM response as JSON: %s\nRaw: %s", exc, raw_text)
+
+    if data is not None:
         return ClassificationResult(
             triggered=bool(data.get("triggered", False)),
             confidence=float(data.get("confidence", 0.0)),
@@ -101,17 +119,15 @@ def _parse_response(raw_text: str, model: str, tokens: int, latency_ms: int) -> 
             tokens_used=tokens,
             latency_ms=latency_ms,
         )
-    except (json.JSONDecodeError, KeyError, ValueError) as exc:
-        logger.error("Failed to parse LLM response as JSON: %s\nRaw: %s", exc, raw_text)
-        return ClassificationResult(
-            triggered=False,
-            confidence=0.0,
-            reason=f"JSON parse error: {exc}",
-            key_signals=[],
-            model_used=model,
-            tokens_used=tokens,
-            latency_ms=latency_ms,
-        )
+    return ClassificationResult(
+        triggered=False,
+        confidence=0.0,
+        reason="JSON parse error — response discarded",
+        key_signals=[],
+        model_used=model,
+        tokens_used=tokens,
+        latency_ms=latency_ms,
+    )
 
 
 class LLMClassifier:

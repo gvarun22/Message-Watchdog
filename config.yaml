@@ -37,26 +37,32 @@ watchdogs:
     condition: >
       Alert me when H1B visa stamping slots are actively opening RIGHT NOW at US consulates
       in India. Signs to watch for: people saying slots are currently visible, available, or
-      open; bulk slots dropping; mentions of specific cities (Mumbai, Chennai, Hyderabad,
-      Delhi/New Delhi, Kolkata) combined with current slot availability; screenshots being
-      posted (burst of photo messages); people saying they just booked an appointment; sudden
-      group excitement.
+      open; bulk slots dropping or being released; mentions of specific cities — full names
+      (Mumbai/Bombay, Chennai/Madras, Hyderabad, Delhi/New Delhi, Kolkata/Calcutta) or their
+      common short forms (Mum, Che/Chn, Hyd, Del, Kol) — combined with current availability;
+      the appointment calendar showing dates; screenshots of the booking portal or calendar
+      being posted (burst of photo messages); people saying they just booked or are booking
+      right now; sudden group excitement or urgent calls to action.
+
+      HIGH-CONFIDENCE real-time indicators:
+      - First-person present reports: "just booked", "I'm booking now", "just got in",
+        "in the queue", "appointment confirmed", "slot showing on my screen"
+      - Urgent calls to action: "check now", "go refresh the portal", "hurry", "quickly"
+      - Bulk or specific numbers: "50 slots dropped", "100 available", calendar showing dates
 
       NEGATIVE signals — lower your confidence significantly if these are present:
-      - "N/A" after a visa category and city means NOT AVAILABLE (e.g. "H1B N/A Hyd/Chn"
-        = H1B slots are not available in Hyderabad/Chennai). This is the OPPOSITE of a
-        positive signal.
-      - Past-tense or historical discussion about slots that already opened earlier ("bulk
-        slots last few weeks", "slots opened this morning at 9am", "I booked yesterday") with
-        no evidence of CURRENT availability should lower confidence significantly.
-      - Someone ASKING whether slots are open ("are there slots?", "can someone confirm slots
-        were released?") without multiple clear affirmative responses is not a trigger.
-      - Discussions about B1, B2, F1, L1, or other non-H1B visa categories are NOT relevant.
-      - Technical complaints (login errors, website down, fee payment issues) with no mention
-        of actual slot availability are NOT a trigger.
+      - "N/A", "FULL", "BOOKED OUT", "NOT AVAILABLE" after a visa category and/or city means
+        NO slots (e.g. "H1B N/A Hyd/Chn" = not available in Hyderabad/Chennai). OPPOSITE signal.
+      - Past-tense or historical discussion ("bulk slots last few weeks", "slots opened this
+        morning", "I booked yesterday") with no evidence of CURRENT availability.
+      - PREDICTED future openings: "slots might drop at 3pm", "coming in the next batch",
+        "they open tomorrow" — future tense is NOT current availability.
+      - Someone ASKING whether slots are open without multiple clear affirmative responses.
+      - Discussions about B1, B2, F1, L1, or other non-H1B visa categories.
+      - Technical complaints (login errors, site down, fee issues) with no slot availability.
 
-      The group uses abbreviations like "h1b stmpng", "h1-b", "h 1b". People misspell and
-      use terrible grammar — be robust to this.
+      Abbreviations used: "H-1B" (official), "h1b", "h1-b", "h 1b", "h1b stmpng".
+      People misspell and use terrible grammar — be robust to this.
 
     confidence_threshold: 0.72   # gate for any alert to fire; raise if false positives persist
     channel_thresholds:
@@ -78,12 +84,18 @@ watchdogs:
       min_spike_factor: 2.5          # message rate ≥ 2.5× baseline
       always_classify_rate: 3.0      # always classify if rate ≥ 3 msg/min regardless
       keyword_patterns:
-        - 'h\s*[-]?\s*1\s*b'         # h1b, h-1b, h 1 b, etc.
+        - 'h\s*[-]?\s*1\s*[-]?\s*b'       # h1b, h-1b, h1-b (H-1B canonical), h 1 b
         - 'slot'
         - 'appointment'
         - 'stamp'
-        - 'consulate'
-        - 'hyderabad|chennai|mumbai|delhi|kolkata'
+        - 'consulate|embassy'
+        - 'calendar'                        # appointment calendar showing dates
+        - 'availab'                         # available, availability
+        - 'bulk'                            # bulk slot drops
+        - 'hyderabad|\bhyd\b'
+        - 'chennai|madras|\bchn\b|\bche\b'
+        - 'mumbai|bombay|\bmum\b'
+        - 'delhi|kolkata|calcutta|\bkol\b'
 
   # Add more watchdogs here — same group, no extra connection created:
   #
