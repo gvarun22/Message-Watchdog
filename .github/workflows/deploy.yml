@@ -85,13 +85,24 @@ jobs:
           echo "::add-mask::$KEY"
           echo "key=$KEY" >> "$GITHUB_OUTPUT"
 
-      - name: Delete existing container (if any)
+      - name: Delete existing container (if any) and wait
         run: |
           az container delete \
             --name ${{ env.ACI_NAME }} \
             --resource-group ${{ secrets.RESOURCE_GROUP }} \
             --yes \
           || true
+          # Poll until the container is fully gone before attempting create.
+          # ACI delete is async — creating immediately causes a Conflict error.
+          for i in $(seq 1 24); do
+            STATUS=$(az container show \
+              --name ${{ env.ACI_NAME }} \
+              --resource-group ${{ secrets.RESOURCE_GROUP }} \
+              --query "instanceView.state" -o tsv 2>/dev/null || echo "gone")
+            if [ "$STATUS" = "gone" ]; then break; fi
+            echo "Waiting for container deletion... ($i/24, state=$STATUS)"
+            sleep 5
+          done
 
       # The container receives only AZURE_KEY_VAULT_URL.
       # All app secrets are fetched from Key Vault at startup via managed identity.
