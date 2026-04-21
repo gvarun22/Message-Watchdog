@@ -64,7 +64,7 @@ watchdogs:
       Abbreviations used: "H-1B" (official), "h1b", "h1-b", "h 1b", "h1b stmpng".
       People misspell and use terrible grammar — be robust to this.
 
-    confidence_threshold: 0.72   # gate for any alert to fire; raise if false positives persist
+    confidence_threshold: 0.68   # gate for any alert to fire; raise if false positives persist
     channel_thresholds:
       phone_call: 0.90     # only call for high-confidence active openings
       telegram_self: 0.80  # Telegram message for moderate-confidence events
