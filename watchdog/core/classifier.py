@@ -50,9 +50,20 @@ Guidelines:
 - Be robust to misspellings, abbreviations, slang, informal writing, emoji, and mixed languages
 - Media messages (labelled [sent photo], [sent video], etc.) in a burst often indicate excitement about a real-world event
 - Message rate spikes (high spike_factor in the activity context) are meaningful signals — sudden bursts accompany events
-- Err on the side of catching real events: false positives are preferable to false negatives
-- confidence should reflect your certainty that the CONDITION IS MET, not just that the general topic is mentioned
-- key_signals should be 1-4 short, specific excerpts or observations — not summaries"""
+- FALSE NEGATIVES ARE WORSE THAN FALSE POSITIVES — when uncertain, set triggered=True
+- confidence reflects certainty that the CONDITION IS MET; when triggered=False, set confidence to 0.0–0.1 only — a high confidence with triggered=False is a logical contradiction
+- key_signals should be 1-4 short, specific excerpts or observations — not summaries
+
+CRITICAL — mixed-signal batches (read carefully):
+When a slot opening happens, the FIRST person to see availability reports it.
+Everyone who checks a few minutes later finds slots gone and reports "NA" or "no slots".
+A batch where a FEW messages say "slots available" or "just booked" while MANY say "NA"
+is the NORMAL PATTERN for a real slot opening — the positive reports are the signal,
+the "NA" messages are latecomers. DO NOT let a majority of negative reports override
+a clear positive report of current availability or a confirmed booking.
+
+Also: "December 2026 slots available" means the booking window is OPEN TODAY for a
+future appointment date. That IS a slot opening event."""
 
 USER_PROMPT_TEMPLATE = """\
 ## Watchdog Condition

@@ -229,6 +229,7 @@ async def _run(cfg: dict, watchdog_configs: list[WatchdogConfig]) -> None:
                 session_name=session_name,
                 group=wc.source_group,
                 startup_lookback_minutes=telegram_cfg.get("startup_lookback_minutes", 10),
+                periodic_catch_up_minutes=telegram_cfg.get("periodic_catch_up_minutes", 5),
             )
 
     # Build engines and wire them to their source

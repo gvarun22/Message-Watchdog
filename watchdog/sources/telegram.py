@@ -23,6 +23,7 @@ arrived during a deploy restart or brief outage.
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from datetime import datetime, timedelta, timezone
 from typing import Optional
@@ -82,13 +83,17 @@ class TelegramSource(MessageSource):
         session_name: str,
         group: str,
         startup_lookback_minutes: int = 10,
+        periodic_catch_up_minutes: int = 5,
     ) -> None:
         super().__init__()
         self._group = group
         self._phone = phone
         self._startup_lookback_minutes = startup_lookback_minutes
+        self._periodic_catch_up_minutes = periodic_catch_up_minutes
         self._client = TelegramClient(session_name, api_id, api_hash)
         self._chat_name: str = group
+        self._seen_ids: set[int] = set()
+        self._catchup_task: Optional[asyncio.Task] = None
 
     @property
     def source_type(self) -> str:
@@ -108,45 +113,67 @@ class TelegramSource(MessageSource):
         logger.info("TelegramSource: monitoring '%s'", self._chat_name)
 
         if self._startup_lookback_minutes > 0:
-            await self._catch_up(entity)
+            await self._catch_up(entity, self._startup_lookback_minutes)
 
         @self._client.on(events.NewMessage(chats=[entity]))
         async def _handler(event: events.NewMessage.Event) -> None:
-            await self._dispatch(self._convert(event.message))
+            msg_id = event.message.id
+            if msg_id not in self._seen_ids:
+                self._seen_ids.add(msg_id)
+                await self._dispatch(self._convert(event.message))
+
+        if self._periodic_catch_up_minutes > 0:
+            self._catchup_task = asyncio.create_task(
+                self._periodic_catch_up_loop(entity)
+            )
 
         await self._client.run_until_disconnected()
 
     async def stop(self) -> None:
+        if self._catchup_task is not None:
+            self._catchup_task.cancel()
         await self._client.disconnect()
         logger.info("TelegramSource: disconnected from '%s'", self._chat_name)
 
-    async def _catch_up(self, entity) -> None:
+    async def _periodic_catch_up_loop(self, entity) -> None:
+        """Re-fetch recent messages every N minutes to recover any that the
+        real-time event handler missed (e.g. due to Telethon update gaps)."""
+        interval = self._periodic_catch_up_minutes * 60
+        while True:
+            await asyncio.sleep(interval)
+            try:
+                await self._catch_up(entity, self._periodic_catch_up_minutes + 2)
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:
+                logger.debug("TelegramSource: periodic catch-up error: %s", exc)
+
+    async def _catch_up(self, entity, lookback_minutes: int) -> None:
         """
-        Fetch messages from the last `startup_lookback_minutes` and push them
-        through the pipeline oldest-first, as if they had just arrived live.
+        Fetch messages from the last `lookback_minutes` and dispatch any not
+        already seen through the pipeline oldest-first.
         """
-        cutoff = datetime.now(timezone.utc) - timedelta(minutes=self._startup_lookback_minutes)
+        cutoff = datetime.now(timezone.utc) - timedelta(minutes=lookback_minutes)
         caught: list[TLMessage] = []
 
         async for msg in self._client.iter_messages(entity, limit=500):
             if msg.date.replace(tzinfo=timezone.utc) < cutoff:
                 break
-            caught.append(msg)
+            if msg.id not in self._seen_ids:
+                caught.append(msg)
 
         if not caught:
-            logger.info(
-                "TelegramSource: catch-up — no messages in last %d min",
-                self._startup_lookback_minutes,
-            )
             return
 
         caught.reverse()  # oldest-first so the engine sees them in order
-        logger.info(
-            "TelegramSource: catch-up — dispatching %d message(s) from last %d min",
-            len(caught), self._startup_lookback_minutes,
-        )
         for msg in caught:
+            self._seen_ids.add(msg.id)
             await self._dispatch(self._convert(msg))
+
+        logger.info(
+            "TelegramSource: catch-up dispatched %d missed message(s) (last %d min)",
+            len(caught), lookback_minutes,
+        )
 
     def _convert(self, tg_msg: TLMessage) -> Message:
         """

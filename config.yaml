@@ -147,6 +147,11 @@ sources:
     # Set to 0 to disable catch-up entirely.
     startup_lookback_minutes: 30
 
+    # Periodic catch-up: re-fetches this many minutes of history every N minutes
+    # to recover messages the real-time event handler may have missed.
+    # Set to 0 to disable. Lookback window is (periodic_catch_up_minutes + 2) min.
+    periodic_catch_up_minutes: 5
+
 # ---------------------------------------------------------------------------
 # Global settings
 # ---------------------------------------------------------------------------
