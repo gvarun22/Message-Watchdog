@@ -14,7 +14,7 @@ llm:
   provider: azure_openai
 
   # --- Azure OpenAI settings ---
-  azure_deployment: "gpt-4.1-mini"
+  azure_deployment: "gpt-4.1"
   azure_api_version: "2025-01-01-preview"
 
   # --- Anthropic settings (unused while provider: azure_openai) ---
